@@ -20,6 +20,14 @@ return [
         'invokables' => [
             'ArchivematicaConnector\Controller\Index' => 'ArchivematicaConnector\Controller\IndexController',
         ],
+        'factories' => [
+            'ArchivematicaConnector\Controller\Sword' => 'ArchivematicaConnector\Service\Controller\SwordControllerFactory',
+        ],
+    ],
+    'service_manager' => [
+        'factories' => [
+            'ArchivematicaConnector\Sword\MetsImporter' => 'ArchivematicaConnector\Service\Sword\MetsImporterFactory',
+        ],
     ],
     'view_manager' => [
         'template_path_stack' => [
@@ -81,6 +89,16 @@ return [
                             ],
                         ],
                     ],
+                ],
+            ],
+        ],
+        'archivematica-sword' => [
+            'type' => 'Segment',
+            'options' => [
+                'route'    => '/sword/deposit[/:target]',
+                'defaults' => [
+                    'controller' => 'ArchivematicaConnector\Controller\Sword',
+                    'action'     => 'deposit',
                 ],
             ],
         ],

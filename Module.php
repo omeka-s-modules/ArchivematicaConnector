@@ -26,6 +26,11 @@ class Module extends AbstractModule
             ['ArchivematicaConnector\Api\Adapter\ArchivematicaItemAdapter'],
             ['search', 'read']
             );
+        $acl->allow(
+            null,
+            [\ArchivematicaConnector\Controller\SwordController::class],
+            ['deposit']
+        );
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
