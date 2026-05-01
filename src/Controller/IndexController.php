@@ -13,27 +13,36 @@ class IndexController extends AbstractActionController
         $view = new ViewModel;
         $form = $this->getForm(ImportForm::class);
         $view->setVariable('form', $form);
+
         if ($this->getRequest()->isPost()) {
-            $data = $this->params()->fromPost();
-            $form->setData($data);
+            $post = $this->params()->fromPost();
+            $files = $this->getRequest()->getFiles()->toArray();
+
+            $form->setData(array_merge($post, $files));
             if ($form->isValid()) {
-                $uri = $data['container_uri'];
-                // do a quick check that the endpoint is available
-                if (! @file_get_contents($uri)) {
-                    $this->messenger()->addError('There was a problem connecting to the Archivematica URI'); // @translate
+                $file = $files['dip_file'] ?? null;
+
+                if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+                    $this->messenger()->addError('File upload failed. Please select a valid Archivematica DIP ZIP file.'); // @translate
                     return $view;
                 }
 
-                $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Import', $data);
-                // the ArchivematicaImport record is created in the job, so it doesn't
-                // happen until the job is done
-                $message = new Message('Importing in Job ID %s', // @translate
-                                        $job->getId());
+                $destPath = sys_get_temp_dir() . '/omeka_archivematica_' . uniqid() . '.zip';
+                if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+                    $this->messenger()->addError('Could not save the uploaded file.'); // @translate
+                    return $view;
+                }
+
+                $jobArgs = $post;
+                $jobArgs['dip_path'] = $destPath;
+                $jobArgs['original_filename'] = $file['name'];
+
+                $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Import', $jobArgs);
+                $message = new Message('Importing in Job ID %s', $job->getId()); // @translate
                 $this->messenger()->addSuccess($message);
-                $view->setVariable('job', $job);
                 return $this->redirect()->toRoute('admin/archivematica-connector/past-imports');
             } else {
-                $this->messenger()->addError('There was an error during validation'); // @translate
+                $this->messenger()->addError('There was an error during validation.'); // @translate
             }
         }
 
@@ -47,27 +56,18 @@ class IndexController extends AbstractActionController
             if (isset($data['undoJobs'])) {
                 $undoJobIds = [];
                 foreach ($data['undoJobs'] as $jobId) {
-                    $undoJob = $this->undoJob($jobId);
+                    $this->undoJob($jobId);
                     $undoJobIds[] = $jobId;
                 }
                 $message = new Message('Undo in progress on the following jobs: %s', // @translate
                     implode(', ', $undoJobIds));
                 $this->messenger()->addSuccess($message);
             }
-            if (isset($data['rerunJobs'])) {
-                $rerunJobIds = [];
-                foreach ($data['rerunJobs'] as $jobId) {
-                    $rerunJob = $this->rerunJob($jobId);
-                    $rerunJobIds[] = $jobId;
-                }
-                $message = new Message('Rerun in progress on the following jobs: %s', // @translate
-                    implode(', ', $rerunJobIds));
-                $this->messenger()->addSuccess($message);
-            }
-            if (!isset($data['undoJobs']) && !isset($data['rerunJobs'])){
+            if (!isset($data['undoJobs'])) {
                 $this->messenger()->addError('Error: no jobs selected'); // @translate
             }
         }
+
         $view = new ViewModel;
         $page = $this->params()->fromQuery('page', 1);
         $query = $this->params()->fromQuery() + [
@@ -86,28 +86,9 @@ class IndexController extends AbstractActionController
         $response = $this->api()->search('archivematica_imports', ['job_id' => $jobId]);
         $archivematicaImport = $response->getContent()[0];
         $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Undo', ['jobId' => $jobId]);
-        $response = $this->api()->update('archivematica_imports',
-                    $archivematicaImport->id(),
-                    [
-                        'o:undo_job' => ['o:id' => $job->getId() ],
-                    ]
-                );
-        return $job;
-    }
-
-    protected function rerunJob($jobId)
-    {
-        $response = $this->api()->search('archivematica_imports', ['job_id' => $jobId]);
-        $archivematicaImport = $response->getContent()[0];
-        // Get original import job args to run again
-        $rerunData = $archivematicaImport->job()->args();
-        $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Import', $rerunData);
-        $response = $this->api()->update('archivematica_imports',
-                $archivematicaImport->id(),
-                [
-                    'o:rerun_job' => ['o:id' => $job->getId() ],
-                ]
-            );
+        $this->api()->update('archivematica_imports', $archivematicaImport->id(), [
+            'o:undo_job' => ['o:id' => $job->getId()],
+        ]);
         return $job;
     }
 }

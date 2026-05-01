@@ -10,69 +10,24 @@ use Laminas\Form\Form;
 
 class ImportForm extends Form
 {
-    /**
-     * @var UserSettings
-     */
     protected $userSettings;
-
-    /**
-     * @var AuthenticationService
-     */
     protected $AuthenticationService;
-
-    /**
-     * @var ApiManager
-     */
     protected $apiManager;
 
     public function init()
     {
+        $this->setAttribute('enctype', 'multipart/form-data');
+
         $this->add([
-            'name' => 'container_uri',
-            'type' => 'url',
+            'name' => 'dip_file',
+            'type' => 'file',
             'options' => [
-                'label' => 'Archivematica URI', // @translate
-                'info' => 'The URI of the Archivematica resource to import.', // @translate
+                'label' => 'DIP ZIP File', // @translate
+                'info' => 'Upload a Dissemination Information Package (DIP) ZIP file exported from Archivematica.', // @translate
             ],
             'attributes' => [
-                'id' => 'container_uri',
+                'id' => 'dip-file',
                 'required' => true,
-            ],
-        ]);
-
-        $this->add([
-            'name' => 'ingest_files',
-            'type' => 'checkbox',
-            'options' => [
-                'label' => 'Import files into Omeka S', // @translate
-                'info' => 'If checked, original files will be imported into Omeka S.', // @translate
-            ],
-            'attributes' => [
-                'id' => 'ingest-files',
-            ],
-        ]);
-
-        $this->add([
-            'name' => 'ignore_parent',
-            'type' => 'checkbox',
-            'options' => [
-                'label' => 'Ignore parent container', // @translate
-                'info' => 'If checked, only descendents of the container at URI above will be imported as items--not the parent container itself.', // @translate
-            ],
-            'attributes' => [
-                'id' => 'ignore-parent',
-            ],
-        ]);
-
-        $this->add([
-            'name' => 'only_direct_children',
-            'type' => 'checkbox',
-            'options' => [
-                'label' => 'Import direct descendents only', // @translate
-                'info' => 'If checked, only direct descendents of the container at URI above will be imported (i.e. no children of children). Otherwise, all resources below container will be recursively imported', // @translate
-            ],
-            'attributes' => [
-                'id' => 'only_direct_children',
             ],
         ]);
 
@@ -81,7 +36,7 @@ class ImportForm extends Form
             'type' => 'textarea',
             'options' => [
                 'label' => 'Comment', // @translate
-                'info' => 'A note about the purpose or source of this import', // @translate
+                'info' => 'A note about the purpose or source of this import.', // @translate
             ],
             'attributes' => [
                 'id' => 'comment',
@@ -99,15 +54,15 @@ class ImportForm extends Form
             ],
             'options' => [
                 'label' => 'Item sets', // @translate
-                'info' => 'Optional. Import items into item set(s).', // @translate
-                'empty_option' => ''
+                'info' => 'Optional. Import item(s) into item set(s).', // @translate
+                'empty_option' => '',
             ],
         ]);
 
         // Merge assign_new_item sites and default user sites
         $defaultAddSiteRepresentations = $this->getApiManager()->search('sites', ['assign_new_items' => true])->getContent();
-        foreach ($defaultAddSiteRepresentations as $defaultAddSiteRepresentation) {
-            $defaultAddSites[] = $defaultAddSiteRepresentation->id();
+        foreach ($defaultAddSiteRepresentations as $site) {
+            $defaultAddSites[] = $site->id();
         }
         $defaultAddSiteStrings = $defaultAddSites ?? [];
 
@@ -115,13 +70,11 @@ class ImportForm extends Form
         $userDefaultSites = $userId ? $this->getUserSettings()->get('default_item_sites', null, $userId) : [];
         $userDefaultSiteStrings = $userDefaultSites ?? [];
 
-        $sites = array_merge($defaultAddSiteStrings, $userDefaultSiteStrings);
-
         $this->add([
             'name' => 'itemSites',
             'type' => SiteSelect::class,
             'attributes' => [
-                'value' => $sites,
+                'value' => array_merge($defaultAddSiteStrings, $userDefaultSiteStrings),
                 'class' => 'chosen-select',
                 'data-placeholder' => 'Select site(s)', // @translate
                 'multiple' => true,
@@ -129,20 +82,15 @@ class ImportForm extends Form
             ],
             'options' => [
                 'label' => 'Sites', // @translate
-                'info' => 'Optional. Import items into site(s).', // @translate
+                'info' => 'Optional. Import item(s) into site(s).', // @translate
                 'empty_option' => '',
             ],
         ]);
 
         $inputFilter = $this->getInputFilter();
-        $inputFilter->add([
-            'name' => 'itemSets',
-            'required' => false,
-        ]);
-        $inputFilter->add([
-            'name' => 'itemSites',
-            'required' => false,
-        ]);
+        $inputFilter->add(['name' => 'dip_file', 'required' => false]);
+        $inputFilter->add(['name' => 'itemSets', 'required' => false]);
+        $inputFilter->add(['name' => 'itemSites', 'required' => false]);
     }
 
     /**

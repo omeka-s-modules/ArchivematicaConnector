@@ -54,20 +54,14 @@ return [
                         'type' => 'Literal',
                         'options' => [
                             'route' => '/archivematica-connector',
+                            'defaults' => [
+                                '__NAMESPACE__' => 'ArchivematicaConnector\Controller',
+                                'controller' => 'Index',
+                                'action' => 'index',
+                            ],
                         ],
                         'may_terminate' => true,
                         'child_routes' => [
-                            'import' => [
-                                'type' => 'Literal',
-                                'options' => [
-                                    'route' => '/import',
-                                    'defaults' => [
-                                        '__NAMESPACE__' => 'ArchivematicaConnector\Controller',
-                                        'controller' => 'Index',
-                                        'action' => 'import',
-                                    ],
-                                ],
-                            ],
                             'past-imports' => [
                                 'type' => 'Literal',
                                 'options' => [
