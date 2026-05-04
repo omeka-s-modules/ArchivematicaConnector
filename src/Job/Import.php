@@ -40,16 +40,25 @@ class Import extends AbstractJob
             $dom->load($metsPath);
 
             $this->propertyIds = $this->loadPropertyIds();
-            $metadata = $this->parseDc($dom);
-            foreach ($this->parseRights($dom) as $rightsValue) {
-                $metadata['rights'][] = $rightsValue;
-            }
-            $filePaths = $this->parseFilePaths($dom, $metsPath);
+            $globalRights = $this->parseRights($dom);
+            $entities = $this->parseEntities($dom);
+            $filePathMap = $this->buildFilePathMap($dom, $metsPath);
 
-            $item = $this->createItem($metadata, $args);
-            $this->createMedia($item, $filePaths);
-            $this->recordItem($item);
-            $this->createImportRecord($args);
+            $addedCount = 0;
+            foreach ($entities as $entity) {
+                $metadata = $this->parseDc($dom, $entity['dmdid']);
+                foreach ($globalRights as $rightsValue) {
+                    $metadata['rights'][] = $rightsValue;
+                }
+                $filePaths = !empty($entity['file_ids'])
+                    ? array_values(array_filter(array_map(fn($id) => $filePathMap[$id] ?? null, $entity['file_ids'])))
+                    : array_values($filePathMap);
+                $item = $this->createItem($metadata, $args);
+                $this->createMedia($item, $filePaths);
+                $this->recordItem($item);
+                $addedCount++;
+            }
+            $this->createImportRecord($args, $addedCount);
 
         } catch (\Exception $e) {
             $this->logger->err('DIP import failed: ' . $e->getMessage());
@@ -114,7 +123,7 @@ class Import extends AbstractJob
         return $ids;
     }
 
-    protected function parseDc(DOMDocument $dom): array
+    protected function parseDc(DOMDocument $dom, ?string $dmdSecId): array
     {
         $xpath = new DOMXPath($dom);
         $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
@@ -128,8 +137,8 @@ class Import extends AbstractJob
         ];
 
         $metadata = [];
-        // Only the first dmdSec is parsed; a DIP represents one intellectual entity
-        $nodes = $xpath->query('//mets:dmdSec[1]//*');
+        $selector = $dmdSecId ? '//mets:dmdSec[@ID="' . $dmdSecId . '"]//*' : '//mets:dmdSec[1]//*';
+        $nodes = $xpath->query($selector);
         foreach ($nodes as $node) {
             $ns = $node->namespaceURI;
             if ($ns !== 'http://purl.org/dc/elements/1.1/' && $ns !== 'http://purl.org/dc/terms/') {
@@ -144,26 +153,53 @@ class Import extends AbstractJob
         return $metadata;
     }
 
-    protected function parseFilePaths(DOMDocument $dom, string $metsPath): array
+    // Returns one entry per DMID div in the logical structMap with file IDs belonging to it
+    // Falls back to a single entity covering all files if no DMDID divs exist
+    protected function parseEntities(DOMDocument $dom): array
+    {
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
+
+        $entities = [];
+        $divs = $xpath->query('//mets:structMap[@TYPE="logical"]//mets:div[@DMDID]');
+        foreach ($divs as $div) {
+            $fileIds = [];
+            foreach ($xpath->query('.//mets:fptr', $div) as $fptr) {
+                $fileIds[] = $fptr->getAttribute('FILEID');
+            }
+            $entities[] = ['dmdid' => $div->getAttribute('DMDID'), 'file_ids' => $fileIds];
+        }
+
+        if (empty($entities)) {
+            $dmdSec = $xpath->query('//mets:dmdSec[1]')->item(0);
+            $entities[] = ['dmdid' => $dmdSec ? $dmdSec->getAttribute('ID') : null, 'file_ids' => []];
+        }
+
+        return $entities;
+    }
+
+    // Builds a fileId local path map for all original files in the package
+    protected function buildFilePathMap(DOMDocument $dom, string $metsPath): array
     {
         $metsDir = dirname($metsPath);
         $xpath = new DOMXPath($dom);
         $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
 
-        $filePaths = [];
-        $fileNodes = $xpath->query('//mets:fileGrp[@USE="original"]//mets:FLocat');
-        foreach ($fileNodes as $node) {
-            $href = $node->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-            if (!$href) {
-                continue;
-            }
-            // xlink:href is relative to the METS file's directory
+        $map = [];
+        foreach ($xpath->query('//mets:fileGrp[@USE="original"]//mets:file') as $fileNode) {
+            $fileId = $fileNode->getAttribute('ID');
+            $flocat = $xpath->query('mets:FLocat', $fileNode)->item(0);
+            if (!$flocat) continue;
+
+            $href = $flocat->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            if (!$href) continue;
+
             $fullPath = realpath($metsDir . '/' . $href);
             if ($fullPath && file_exists($fullPath)) {
-                $filePaths[] = $fullPath;
+                $map[$fileId] = $fullPath;
             }
         }
-        return $filePaths;
+        return $map;
     }
 
     protected function parseRights(DOMDocument $dom): array
@@ -323,11 +359,11 @@ class Import extends AbstractJob
         ]);
     }
 
-    protected function createImportRecord(array $args): void
+    protected function createImportRecord(array $args, int $addedCount = 1): void
     {
         $this->api->create('archivematica_imports', [
             'o:job' => ['o:id' => $this->job->getId()],
-            'added_count' => 1,
+            'added_count' => $addedCount,
             'updated_count' => 0,
             'comment' => $args['comment'] ?? null,
         ]);
