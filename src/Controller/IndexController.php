@@ -23,11 +23,12 @@ class IndexController extends AbstractActionController
                 $file = $files['dip_file'] ?? null;
 
                 if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                    $this->messenger()->addError('File upload failed. Please select a valid Archivematica DIP ZIP file.'); // @translate
+                    $this->messenger()->addError('File upload failed. Please select a valid Archivematica DIP file.'); // @translate
                     return $view;
                 }
 
-                $destPath = sys_get_temp_dir() . '/omeka_archivematica_' . uniqid() . '.zip';
+                $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+                $destPath = sys_get_temp_dir() . '/omeka_archivematica_' . uniqid() . ($ext ? '.' . $ext : '.tar');
                 if (!move_uploaded_file($file['tmp_name'], $destPath)) {
                     $this->messenger()->addError('Could not save the uploaded file.'); // @translate
                     return $view;
@@ -51,6 +52,7 @@ class IndexController extends AbstractActionController
 
     public function pastImportsAction()
     {
+        $view = new ViewModel;
         if ($this->getRequest()->isPost()) {
             $data = $this->params()->fromPost();
             if (isset($data['undoJobs'])) {
@@ -62,13 +64,12 @@ class IndexController extends AbstractActionController
                 $message = new Message('Undo in progress on the following jobs: %s', // @translate
                     implode(', ', $undoJobIds));
                 $this->messenger()->addSuccess($message);
-            }
-            if (!isset($data['undoJobs'])) {
+            } else {
                 $this->messenger()->addError('Error: no jobs selected'); // @translate
             }
+            return $this->redirect()->toRoute('admin/archivematica-connector/past-imports');
         }
 
-        $view = new ViewModel;
         $page = $this->params()->fromQuery('page', 1);
         $query = $this->params()->fromQuery() + [
             'page' => $page,

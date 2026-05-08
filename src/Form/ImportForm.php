@@ -10,8 +10,19 @@ use Laminas\Form\Form;
 
 class ImportForm extends Form
 {
+    /**
+     * @var UserSettings
+     */
     protected $userSettings;
+
+    /**
+     * @var AuthenticationService
+     */
     protected $AuthenticationService;
+
+    /**
+     * @var ApiManager
+     */
     protected $apiManager;
 
     public function init()
@@ -22,8 +33,8 @@ class ImportForm extends Form
             'name' => 'dip_file',
             'type' => 'file',
             'options' => [
-                'label' => 'DIP ZIP File', // @translate
-                'info' => 'Upload a Dissemination Information Package (DIP) ZIP file exported from Archivematica.', // @translate
+                'label' => 'DIP File', // @translate
+                'info' => 'Upload a Dissemination Information Package (DIP) TAR file exported from Archivematica.', // @translate
             ],
             'attributes' => [
                 'id' => 'dip-file',
@@ -140,4 +151,5 @@ class ImportForm extends Form
     {
         return $this->apiManager;
     }
+
 }

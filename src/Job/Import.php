@@ -7,7 +7,7 @@ use Omeka\Api\Request;
 use Omeka\Entity\Media;
 use Omeka\Job\AbstractJob;
 use Omeka\Stdlib\ErrorStore;
-use ZipArchive;
+use PharData;
 
 class Import extends AbstractJob
 {
@@ -30,10 +30,10 @@ class Import extends AbstractJob
 
         $tempDir = null;
         try {
-            $tempDir = $this->extractZip($dipPath);
+            $tempDir = $this->extractArchive($dipPath);
             $metsPath = $this->findMets($tempDir);
             if (!$metsPath) {
-                throw new \RuntimeException('No METS file found in DIP ZIP');
+                throw new \RuntimeException('No METS file found in DIP archive');
             }
 
             $dom = new DOMDocument;
@@ -41,9 +41,9 @@ class Import extends AbstractJob
 
             $this->propertyIds = $this->loadPropertyIds();
             $globalRights = $this->parseRights($dom);
+
             $entities = $this->parseEntities($dom);
             $filePathMap = $this->buildFilePathMap($dom, $metsPath);
-
             $addedCount = 0;
             foreach ($entities as $entity) {
                 $metadata = $this->parseDc($dom, $entity['dmdid']);
@@ -63,7 +63,7 @@ class Import extends AbstractJob
         } catch (\Exception $e) {
             $this->logger->err('DIP import failed: ' . $e->getMessage());
         } finally {
-            // Clean up extracted ZIP contents
+            // Clean up extracted archive contents
             if ($tempDir && is_dir($tempDir)) {
                 $this->deleteDir($tempDir);
             }
@@ -74,30 +74,25 @@ class Import extends AbstractJob
         }
     }
 
-    protected function extractZip(string $zipPath): string
+    protected function extractArchive(string $archivePath): string
     {
         $tempDir = sys_get_temp_dir() . '/archivematica_dip_' . uniqid();
         mkdir($tempDir, 0755, true);
-        $zip = new ZipArchive;
-        if ($zip->open($zipPath) !== true) {
-            throw new \RuntimeException('Could not open DIP ZIP file');
+        try {
+            $phar = new PharData($archivePath);
+            $phar->extractTo($tempDir);
+        } catch (\Exception $e) {
+            throw new \RuntimeException('Could not open DIP archive: ' . $e->getMessage());
         }
-        $zip->extractTo($tempDir);
-        $zip->close();
         return $tempDir;
     }
 
     protected function findMets(string $tempDir): ?string
     {
-        // Account for structural variations across Archivematica versions
-        foreach ([
-            $tempDir . '/*/data/METS.*.xml',
-            $tempDir . '/data/METS.*.xml',
-            $tempDir . '/METS.*.xml',
-        ] as $pattern) {
-            $matches = glob($pattern);
-            if (!empty($matches)) {
-                return $matches[0];
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($tempDir));
+        foreach ($iterator as $file) {
+            if ($file->isFile() && preg_match('/^METS\..+\.xml$/i', $file->getFilename())) {
+                return $file->getPathname();
             }
         }
         return null;
@@ -112,6 +107,7 @@ class Import extends AbstractJob
             'dcterms:identifier', 'dcterms:rights', 'dcterms:publisher',
             'dcterms:contributor', 'dcterms:type', 'dcterms:source',
             'dcterms:language', 'dcterms:relation', 'dcterms:coverage',
+            'dcterms:provenance',
         ];
         $ids = [];
         foreach ($terms as $term) {
@@ -133,7 +129,7 @@ class Import extends AbstractJob
         $dcElements = [
             'title', 'description', 'creator', 'subject', 'date', 'format',
             'identifier', 'rights', 'publisher', 'contributor', 'type',
-            'source', 'language', 'relation', 'coverage',
+            'source', 'language', 'relation', 'coverage', 'provenance',
         ];
 
         $metadata = [];

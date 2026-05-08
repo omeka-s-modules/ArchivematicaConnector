@@ -18,7 +18,7 @@ $escape = $this->plugin('escapeHtml');
         <thead>
             <tr>
                 <th><?php echo $escape($this->translate('Undo')); ?></th>
-                <th><?php echo $this->sortLink($this->translate('Job ID'), 'id'); ?></th>
+                <th><?php echo $escape($this->translate('Job ID')); ?></th>
                 <th><?php echo $escape($this->translate('File')); ?></th>
                 <th><?php echo $escape($this->translate('Comment')); ?></th>
                 <th><?php echo $escape($this->translate('Items')); ?></th>
@@ -29,10 +29,13 @@ $escape = $this->plugin('escapeHtml');
         </thead>
         <tbody>
         <?php foreach ($imports as $import): ?>
-        <?php $job = $import->job(); ?>
-        <?php $undoJob = $import->undoJob(); ?>
+        <?php $job = $import->job(); $undoJob = $import->undoJob(); ?>
         <tr>
-            <td><input type='checkbox' name='undoJobs[]' value='<?php echo $job->id(); ?>' aria-label="<?php echo $this->translate('Undo job'); ?>" /></td>
+            <td>
+                <?php if (!$undoJob): ?>
+                <input type='checkbox' name='undoJobs[]' value='<?php echo $job->id(); ?>' aria-label="<?php echo $this->translate('Undo job'); ?>" />
+                <?php endif; ?>
+            </td>
             <td><?php echo $job->link($job->id()); ?></td>
             <td>
                 <?php
@@ -42,17 +45,17 @@ $escape = $this->plugin('escapeHtml');
             </td>
             <td><?php echo $escape($import->comment()); ?></td>
             <td>
-            <?php
-            $totalCount = $import->addedCount() + $import->updatedCount();
-            $totalResults = $this->api()->search('items', ['archivematica_import_id' => $job->id()]);
-            if ($totalResults->getTotalResults() > 0 && $totalCount > 0) {
-                echo $this->hyperlink('Total: ' . $totalCount, $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $job->id()]])) . '<br>';
-            } else {
-                echo 'Total: ' . $totalCount . '<br>';
-            }
-            echo 'Added: ' . $import->addedCount() . '<br>';
-            echo 'Updated: ' . $import->updatedCount();
-            ?>
+                <?php
+                $totalCount = $import->addedCount() + $import->updatedCount();
+                $totalResults = $this->api()->search('items', ['archivematica_import_id' => $job->id()]);
+                if ($totalResults->getTotalResults() > 0 && $totalCount > 0) {
+                    echo $this->hyperlink('Total: ' . $totalCount, $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $job->id()]])) . '<br>';
+                } else {
+                    echo 'Total: ' . $totalCount . '<br>';
+                }
+                echo 'Added: ' . $import->addedCount() . '<br>';
+                echo 'Updated: ' . $import->updatedCount();
+                ?>
             </td>
             <td><?php echo $escape($this->i18n()->dateFormat($job->started())); ?></td>
             <td>
