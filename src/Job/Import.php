@@ -28,7 +28,16 @@ class Import extends AbstractJob
             return;
         }
 
+        $importRecord = $this->api->create('archivematica_imports', [
+            'o:job' => ['o:id' => $this->job->getId()],
+            'added_count' => 0,
+            'updated_count' => 0,
+            'comment' => $args['comment'] ?? null,
+        ])->getContent();
+
         $tempDir = null;
+        $addedCount = 0;
+        $updatedCount = 0;
         try {
             $tempDir = $this->extractArchive($dipPath);
             $this->validateExtractedPaths($tempDir);
@@ -44,9 +53,11 @@ class Import extends AbstractJob
             $this->propertyIds = $this->loadPropertyIds();
             $globalRights = $this->parseRights($dom);
 
+            preg_match('/METS\.([0-9a-f-]{36})\.xml$/i', basename($metsPath), $m);
+            $packageUuid = $m[1] ?? null;
+
             $entities = $this->parseEntities($dom);
             $filePathMap = $this->buildFilePathMap($dom, $metsPath);
-            $addedCount = 0;
             foreach ($entities as $entity) {
                 $metadata = $this->parseDc($dom, $entity['dmdid']);
                 foreach ($globalRights as $rightsValue) {
@@ -55,16 +66,38 @@ class Import extends AbstractJob
                 $filePaths = !empty($entity['file_ids'])
                     ? array_values(array_filter(array_map(fn($id) => $filePathMap[$id] ?? null, $entity['file_ids'])))
                     : array_values($filePathMap);
-                $item = $this->createItem($metadata, $args);
-                $this->createMedia($item, $filePaths);
-                $this->recordItem($item);
-                $addedCount++;
+
+                $fileUuid = !empty($entity['file_ids'])
+                    ? preg_replace('/^file-/', '', $entity['file_ids'][0])
+                    : null;
+                $entityUri = $packageUuid
+                    ? ($fileUuid ? $packageUuid . '/' . $fileUuid : $packageUuid)
+                    : null;
+
+                $existing = $entityUri
+                    ? $this->api->search('archivematica_items', ['uri' => $entityUri])->getContent()
+                    : [];
+
+                if (!empty($existing)) {
+                    $this->updateItem($existing[0]->item(), $metadata);
+                    $updatedCount++;
+                } else {
+                    $item = $this->createItem($metadata, $args);
+                    $this->createMedia($item, $filePaths);
+                    $this->recordItem($item, $entityUri);
+                    $addedCount++;
+                }
             }
-            $this->createImportRecord($args, $addedCount);
 
         } catch (\Exception $e) {
             $this->logger->err('DIP import failed: ' . $e->getMessage());
         } finally {
+            $this->api->update('archivematica_imports', $importRecord->id(), [
+                'o:job' => ['o:id' => $this->job->getId()],
+                'added_count' => $addedCount,
+                'updated_count' => $updatedCount,
+                'comment' => $args['comment'] ?? null,
+            ]);
             // Clean up extracted archive contents
             if ($tempDir && is_dir($tempDir)) {
                 $this->deleteDir($tempDir);
@@ -438,25 +471,46 @@ class Import extends AbstractJob
         }
     }
 
-    protected function recordItem(\Omeka\Api\Representation\ItemRepresentation $item): void
+    protected function updateItem(\Omeka\Api\Representation\ItemRepresentation $item, array $metadata): void
+    {
+        $itemData = [];
+        foreach ($metadata as $element => $values) {
+            $term = 'dcterms:' . $element;
+            if (!isset($this->propertyIds[$term])) {
+                continue;
+            }
+            $propertyId = $this->propertyIds[$term];
+            foreach ($values as $value) {
+                $itemData[$term][] = [
+                    'type' => 'literal',
+                    'property_id' => $propertyId,
+                    '@value' => $value,
+                ];
+            }
+        }
+        $this->api->update('items', $item->id(), $itemData, [], ['isPartial' => true]);
+
+        // Point the archivematica_item record to the current job so the past
+        // imports link filters to this job's updated items.
+        $archivematicaItems = $this->api->search('archivematica_items', ['item_id' => $item->id()])->getContent();
+        if (!empty($archivematicaItems)) {
+            $this->api->update('archivematica_items', $archivematicaItems[0]->id(), [
+                'o:job' => ['o:id' => $this->job->getId()],
+                'last_modified' => new \DateTime,
+            ], [], ['isPartial' => true]);
+        }
+    }
+
+    protected function recordItem(\Omeka\Api\Representation\ItemRepresentation $item, ?string $entityUri): void
     {
         $this->api->create('archivematica_items', [
             'o:job' => ['o:id' => $this->job->getId()],
             'o:item' => ['o:id' => $item->id()],
-            'uri' => $item->apiUrl(),
+            'uri' => $entityUri ?? $item->apiUrl(),
             'last_modified' => new \DateTime,
         ]);
     }
 
-    protected function createImportRecord(array $args, int $addedCount = 1): void
-    {
-        $this->api->create('archivematica_imports', [
-            'o:job' => ['o:id' => $this->job->getId()],
-            'added_count' => $addedCount,
-            'updated_count' => 0,
-            'comment' => $args['comment'] ?? null,
-        ]);
-    }
 
     protected function deleteDir(string $dir): void
     {

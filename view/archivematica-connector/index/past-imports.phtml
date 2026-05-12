@@ -46,12 +46,11 @@ $escape = $this->plugin('escapeHtml');
             <td><?php echo $escape($import->comment()); ?></td>
             <td>
                 <?php
-                $totalCount = $import->addedCount() + $import->updatedCount();
-                $totalResults = $this->api()->search('items', ['archivematica_import_id' => $job->id()]);
-                if ($totalResults->getTotalResults() > 0 && $totalCount > 0) {
-                    echo $this->hyperlink('Total: ' . $totalCount, $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $job->id()]])) . '<br>';
+                $liveCount = $this->api()->search('items', ['archivematica_import_id' => $job->id()])->getTotalResults();
+                if ($liveCount > 0) {
+                    echo $this->hyperlink('Total: ' . $liveCount, $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $job->id()]]), ['target' => '_blank']) . '<br>';
                 } else {
-                    echo 'Total: ' . $totalCount . '<br>';
+                    echo 'Total: ' . ($import->addedCount() + $import->updatedCount()) . '<br>';
                 }
                 echo 'Added: ' . $import->addedCount() . '<br>';
                 echo 'Updated: ' . $import->updatedCount();
