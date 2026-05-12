@@ -83,7 +83,7 @@ return [
         'AdminModule' => [
             [
                 'label' => 'Archivematica Connector', // @translate
-                'route' => 'admin/archivematica-connector/past-imports',
+                'route' => 'admin/archivematica-connector',
                 'resource' => 'ArchivematicaConnector\Controller\Index',
                 'pages' => [
                     [
