@@ -133,8 +133,25 @@ class Import extends AbstractJob
         ];
 
         $metadata = [];
-        $selector = $dmdSecId ? '//mets:dmdSec[@ID="' . $dmdSecId . '"]//*' : '//mets:dmdSec[1]//*';
-        $nodes = $xpath->query($selector);
+
+        // DMDID is a space-separated list; find the dmdSec with MDTYPE="DC"
+        if ($dmdSecId) {
+            $dcSec = null;
+            foreach (preg_split('/\s+/', trim($dmdSecId)) as $id) {
+                $wrap = $xpath->query('//mets:dmdSec[@ID="' . $id . '"]/mets:mdWrap[@MDTYPE="DC"]')->item(0);
+                if ($wrap) {
+                    $dcSec = $wrap->parentNode;
+                    break;
+                }
+            }
+            if (!$dcSec) {
+                return $metadata;
+            }
+            $nodes = $xpath->query('.//*', $dcSec);
+        } else {
+            $nodes = $xpath->query('//mets:dmdSec[mets:mdWrap[@MDTYPE="DC"]]//*');
+        }
+
         foreach ($nodes as $node) {
             $ns = $node->namespaceURI;
             if ($ns !== 'http://purl.org/dc/elements/1.1/' && $ns !== 'http://purl.org/dc/terms/') {
@@ -157,6 +174,8 @@ class Import extends AbstractJob
         $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
 
         $entities = [];
+
+        // Try logical structMap first (used by multi-entity transfers)
         $divs = $xpath->query('//mets:structMap[@TYPE="logical"]//mets:div[@DMDID]');
         foreach ($divs as $div) {
             $fileIds = [];
@@ -164,6 +183,18 @@ class Import extends AbstractJob
                 $fileIds[] = $fptr->getAttribute('FILEID');
             }
             $entities[] = ['dmdid' => $div->getAttribute('DMDID'), 'file_ids' => $fileIds];
+        }
+
+        // Fall back to physical structMap Item divs (used by simple CSV metadata transfers)
+        if (empty($entities)) {
+            $divs = $xpath->query('//mets:structMap[@TYPE="physical"]//mets:div[@TYPE="Item"][@DMDID]');
+            foreach ($divs as $div) {
+                $fileIds = [];
+                foreach ($xpath->query('mets:fptr', $div) as $fptr) {
+                    $fileIds[] = $fptr->getAttribute('FILEID');
+                }
+                $entities[] = ['dmdid' => $div->getAttribute('DMDID'), 'file_ids' => $fileIds];
+            }
         }
 
         if (empty($entities)) {
