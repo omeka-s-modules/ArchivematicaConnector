@@ -31,6 +31,7 @@ class Import extends AbstractJob
         $tempDir = null;
         try {
             $tempDir = $this->extractArchive($dipPath);
+            $this->validateExtractedPaths($tempDir);
             $metsPath = $this->findMets($tempDir);
             if (!$metsPath) {
                 throw new \RuntimeException('No METS file found in DIP archive');
@@ -38,6 +39,7 @@ class Import extends AbstractJob
 
             $dom = new DOMDocument;
             $dom->load($metsPath);
+            $this->validateMets($dom);
 
             $this->propertyIds = $this->loadPropertyIds();
             $globalRights = $this->parseRights($dom);
@@ -205,25 +207,82 @@ class Import extends AbstractJob
         return $entities;
     }
 
-    // Builds a fileId local path map for all original files in the package
+    // Guards against tar slip: verifies all extracted files are within $tempDir.
+    protected function validateExtractedPaths(string $tempDir): void
+    {
+        $realTempDir = realpath($tempDir);
+        $iter = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($tempDir, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+        foreach ($iter as $file) {
+            $realPath = realpath($file->getPathname());
+            if ($realPath !== false
+                && $realPath !== $realTempDir
+                && strpos($realPath, $realTempDir . DIRECTORY_SEPARATOR) !== 0
+            ) {
+                throw new \RuntimeException('Archive contains a path traversal entry: ' . $file->getPathname());
+            }
+        }
+    }
+
+    // Verifies the METS looks like a real Archivematica DIP and has no path traversal in hrefs.
+    protected function validateMets(DOMDocument $dom): void
+    {
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
+
+        if (!$xpath->query('/mets:mets')->item(0)) {
+            throw new \RuntimeException('Not a valid METS document — this may not be an Archivematica DIP');
+        }
+        if (!$xpath->query('//mets:fileGrp[@USE="original"]')->item(0)) {
+            throw new \RuntimeException('METS has no original file group — this may not be an Archivematica DIP');
+        }
+
+        foreach ($xpath->query('//mets:FLocat') as $flocat) {
+            $href = $flocat->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            if ($href !== '' && (str_contains($href, '..') || str_contains($href, "\0"))) {
+                throw new \RuntimeException('Suspicious file path in METS: ' . $href);
+            }
+        }
+    }
+
+    // Builds a fileId -> local path map for all original files in the package.
+    // In DIPs, Archivematica renames objects to {UUID}-{original_name}, so we
+    // match by UUID rather than the original href.
     protected function buildFilePathMap(DOMDocument $dom, string $metsPath): array
     {
         $metsDir = dirname($metsPath);
         $xpath = new DOMXPath($dom);
         $xpath->registerNamespace('mets', 'http://www.loc.gov/METS/');
 
+        $uuidToPath = [];
+        $objectsDir = $metsDir . '/objects';
+        if (is_dir($objectsDir)) {
+            $iter = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($objectsDir));
+            foreach ($iter as $file) {
+                if ($file->isFile() && preg_match('/^([0-9a-f-]{36})-/i', $file->getFilename(), $m)) {
+                    $uuidToPath[$m[1]] = $file->getPathname();
+                }
+            }
+        }
+
         $map = [];
         foreach ($xpath->query('//mets:fileGrp[@USE="original"]//mets:file') as $fileNode) {
             $fileId = $fileNode->getAttribute('ID');
-            $flocat = $xpath->query('mets:FLocat', $fileNode)->item(0);
-            if (!$flocat) continue;
+            $uuid = preg_replace('/^file-/', '', $fileId);
 
-            $href = $flocat->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-            if (!$href) continue;
-
-            $fullPath = realpath($metsDir . '/' . $href);
-            if ($fullPath && file_exists($fullPath)) {
-                $map[$fileId] = $fullPath;
+            if (isset($uuidToPath[$uuid])) {
+                $map[$fileId] = $uuidToPath[$uuid];
+            } else {
+                // Fall back to href for cases where files aren't UUID-prefixed
+                $flocat = $xpath->query('mets:FLocat', $fileNode)->item(0);
+                if (!$flocat) continue;
+                $href = $flocat->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+                if (!$href) continue;
+                $fullPath = realpath($metsDir . '/' . $href);
+                if ($fullPath && file_exists($fullPath)) {
+                    $map[$fileId] = $fullPath;
+                }
             }
         }
         return $map;
@@ -350,6 +409,7 @@ class Import extends AbstractJob
                     throw new \RuntimeException('Could not copy file to temp location');
                 }
 
+                $now = new \DateTime('now');
                 $media = new Media;
                 $media->setItem($itemEntity);
                 $media->setIngester('upload');
@@ -358,6 +418,8 @@ class Import extends AbstractJob
                 $media->setSource(basename($filePath));
                 $media->setPosition($position);
                 $media->setData([]);
+                $media->setCreated($now);
+                $media->setModified($now);
 
                 $errorStore = new ErrorStore;
                 $tempFile->mediaIngestFile($media, new Request('create', 'media'), $errorStore);
