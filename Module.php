@@ -20,12 +20,14 @@ class Module extends AbstractModule
     public function onBootstrap(MvcEvent $event)
     {
         parent::onBootstrap($event);
-        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+        $services = $this->getServiceLocator();
+        $acl = $services->get('Omeka\Acl');
         $acl->allow(
             null,
             ['ArchivematicaConnector\Api\Adapter\ArchivematicaItemAdapter'],
             ['search', 'read']
-            );
+        );
+        $this->registerStaticSiteExporter($services);
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -76,5 +78,29 @@ class Module extends AbstractModule
                 $adapter->createNamedParameter($qb, $query['archivematica_import_id'])
             ));
         }
+    }
+
+    protected function registerStaticSiteExporter($services)
+    {
+        $moduleManager = $services->get('Omeka\ModuleManager');
+        $module = $moduleManager->getModule('StaticSiteExport');
+        if (!$module || $module->getState() !== \Omeka\Module\Manager::STATE_ACTIVE) {
+            return;
+        }
+        if (!$services->has('Exports\ExporterManager')) {
+            return;
+        }
+        $hasCompleted = $services->get('Omeka\Connection')->fetchOne(
+            'SELECT 1 FROM static_site ss INNER JOIN job j ON ss.job_id = j.id WHERE j.status = ? LIMIT 1',
+            ['completed']
+        );
+        if (!$hasCompleted) {
+            return;
+        }
+        $services->get('Exports\ExporterManager')->configure([
+            'factories' => [
+                'archivematica_static_site' => Service\Exporter\ArchivematicaStaticSiteFactory::class,
+            ],
+        ]);
     }
 }
