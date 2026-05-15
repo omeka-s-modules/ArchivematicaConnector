@@ -36,10 +36,13 @@ class ArchivematicaStaticSite implements ExporterInterface
 
     public function addElements(Fieldset $fieldset): void
     {
+        $sitesDir = rtrim((string) $this->settings->get('static_site_export_sites_directory_path', ''), '/');
         $options = ['' => 'Select a static site…']; // @translate
         foreach ($this->apiManager->search('static_site_export_static_sites')->getContent() as $staticSite) {
             $job = $staticSite->job();
-            if ($job && $job->status() === 'completed') {
+            if ($job && $job->status() === 'completed'
+                && is_file(sprintf('%s/%s.zip', $sitesDir, $staticSite->name()))
+            ) {
                 $options[$staticSite->id()] = sprintf(
                     '%s (%s)',
                     $staticSite->site()->title(),

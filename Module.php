@@ -90,11 +90,20 @@ class Module extends AbstractModule
         if (!$services->has('Exports\ExporterManager')) {
             return;
         }
-        $hasCompleted = $services->get('Omeka\Connection')->fetchOne(
-            'SELECT 1 FROM static_site ss INNER JOIN job j ON ss.job_id = j.id WHERE j.status = ? LIMIT 1',
+        // Check that at least one completed static site export has its ZIP on disk
+        $sitesDir = rtrim((string) $services->get('Omeka\Settings')->get('static_site_export_sites_directory_path', ''), '/');
+        $completedSites = $services->get('Omeka\Connection')->fetchAllAssociative(
+            'SELECT ss.name FROM static_site ss INNER JOIN job j ON ss.job_id = j.id WHERE j.status = ?',
             ['completed']
         );
-        if (!$hasCompleted) {
+        $hasZip = false;
+        foreach ($completedSites as $site) {
+            if (is_file(sprintf('%s/%s.zip', $sitesDir, $site['name']))) {
+                $hasZip = true;
+                break;
+            }
+        }
+        if (!$hasZip) {
             return;
         }
         $services->get('Exports\ExporterManager')->configure([
