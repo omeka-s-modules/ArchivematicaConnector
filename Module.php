@@ -3,12 +3,8 @@ namespace ArchivematicaConnector;
 
 use Omeka\Module\AbstractModule;
 use Laminas\ServiceManager\ServiceLocatorInterface;
-use Laminas\View\Renderer\PhpRenderer;
-use Laminas\Mvc\Controller\AbstractController;
 use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\Mvc\MvcEvent;
-use ArchivematicaConnector\Form\ConfigForm;
-use Composer\Semver\Comparator;
 
 class Module extends AbstractModule
 {

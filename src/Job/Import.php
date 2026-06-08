@@ -64,7 +64,7 @@ class Import extends AbstractJob
                     $metadata['rights'][] = $rightsValue;
                 }
                 $filePaths = !empty($entity['file_ids'])
-                    ? array_values(array_filter(array_map(fn($id) => $filePathMap[$id] ?? null, $entity['file_ids'])))
+                    ? array_values(array_filter(array_map(fn ($id) => $filePathMap[$id] ?? null, $entity['file_ids'])))
                     : array_values($filePathMap);
 
                 $fileUuid = !empty($entity['file_ids'])
@@ -309,9 +309,13 @@ class Import extends AbstractJob
             } else {
                 // Fall back to href for cases where files aren't UUID-prefixed
                 $flocat = $xpath->query('mets:FLocat', $fileNode)->item(0);
-                if (!$flocat) continue;
+                if (!$flocat) {
+                    continue;
+                }
                 $href = $flocat->getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-                if (!$href) continue;
+                if (!$href) {
+                    continue;
+                }
                 $fullPath = realpath($metsDir . '/' . $href);
                 if ($fullPath && file_exists($fullPath)) {
                     $map[$fileId] = $fullPath;
@@ -349,30 +353,48 @@ class Import extends AbstractJob
                         $status = $xpath->query('premis:copyrightInformation/premis:copyrightStatus', $statement)->item(0);
                         $jurisdiction = $xpath->query('premis:copyrightInformation/premis:copyrightJurisdiction', $statement)->item(0);
                         $note = $xpath->query('premis:copyrightInformation/premis:copyrightNote', $statement)->item(0);
-                        if ($status) $detail[] = trim($status->textContent);
-                        if ($jurisdiction) $detail[] = '(' . trim($jurisdiction->textContent) . ')';
-                        if ($note) $detail[] = trim($note->textContent);
+                        if ($status) {
+                            $detail[] = trim($status->textContent);
+                        }
+                        if ($jurisdiction) {
+                            $detail[] = '(' . trim($jurisdiction->textContent) . ')';
+                        }
+                        if ($note) {
+                            $detail[] = trim($note->textContent);
+                        }
                         break;
 
                     case 'license':
                         $terms = $xpath->query('premis:licenseInformation/premis:licenseTerms', $statement)->item(0);
                         $note = $xpath->query('premis:licenseInformation/premis:licenseNote', $statement)->item(0);
-                        if ($terms) $detail[] = trim($terms->textContent);
-                        if ($note) $detail[] = trim($note->textContent);
+                        if ($terms) {
+                            $detail[] = trim($terms->textContent);
+                        }
+                        if ($note) {
+                            $detail[] = trim($note->textContent);
+                        }
                         break;
 
                     case 'statute':
                         $citation = $xpath->query('premis:statuteInformation/premis:statuteCitation', $statement)->item(0);
                         $jurisdiction = $xpath->query('premis:statuteInformation/premis:statuteJurisdiction', $statement)->item(0);
                         $note = $xpath->query('premis:statuteInformation/premis:statuteNote', $statement)->item(0);
-                        if ($citation) $detail[] = trim($citation->textContent);
-                        if ($jurisdiction) $detail[] = '(' . trim($jurisdiction->textContent) . ')';
-                        if ($note) $detail[] = trim($note->textContent);
+                        if ($citation) {
+                            $detail[] = trim($citation->textContent);
+                        }
+                        if ($jurisdiction) {
+                            $detail[] = '(' . trim($jurisdiction->textContent) . ')';
+                        }
+                        if ($note) {
+                            $detail[] = trim($note->textContent);
+                        }
                         break;
 
                     default: // Other
                         $note = $xpath->query('premis:otherRightsInformation/premis:otherRightsNote', $statement)->item(0);
-                        if ($note) $detail[] = trim($note->textContent);
+                        if ($note) {
+                            $detail[] = trim($note->textContent);
+                        }
                         break;
                 }
 
@@ -510,7 +532,6 @@ class Import extends AbstractJob
             'last_modified' => new \DateTime,
         ]);
     }
-
 
     protected function deleteDir(string $dir): void
     {
