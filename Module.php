@@ -23,7 +23,13 @@ class Module extends AbstractModule
             ['ArchivematicaConnector\Api\Adapter\ArchivematicaItemAdapter'],
             ['search', 'read']
         );
-        $this->registerStaticSiteExporter($services);
+        if ($this->staticSiteExportIsActive()) {
+            $services->get('FormElementManager')->configure([
+                'factories' => [
+                    'StaticSiteExport\Form\StaticSiteForm' => \ArchivematicaConnector\Service\Form\StaticSiteFormFactory::class,
+                ],
+            ]);
+        }
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -57,6 +63,19 @@ class Module extends AbstractModule
             'api.search.query',
             [$this, 'importSearch']
         );
+        if (!$this->staticSiteExportIsActive()) {
+            return;
+        }
+        $sharedEventManager->attach(
+            'StaticSiteExport\Api\Adapter\StaticSiteAdapter',
+            'api.hydrate.post',
+            [$this, 'hydrateStaticSiteData']
+        );
+        $sharedEventManager->attach(
+            'StaticSiteExport\Job\ExportStaticSite',
+            'static_site_export.site_export.post',
+            [$this, 'dispatchSipPackagingJob']
+        );
     }
 
     public function importSearch($event)
@@ -76,36 +95,76 @@ class Module extends AbstractModule
         }
     }
 
-    protected function registerStaticSiteExporter($services)
+    public function hydrateStaticSiteData($event)
     {
-        $moduleManager = $services->get('Omeka\ModuleManager');
-        $module = $moduleManager->getModule('StaticSiteExport');
-        if (!$module || $module->getState() !== \Omeka\Module\Manager::STATE_ACTIVE) {
+        $request = $event->getParam('request');
+        $content = $request->getContent();
+        if (empty($content['package_as_archivematica_sip'])) {
             return;
         }
-        if (!$services->has('Exports\ExporterManager')) {
+        $entity = $event->getParam('entity');
+        $data = $entity->getData() ?? [];
+        $data['package_as_archivematica_sip'] = true;
+        $entity->setData($data);
+    }
+
+    public function dispatchSipPackagingJob($event)
+    {
+        $exportJob = $event->getTarget();
+        $staticSite = $exportJob->getStaticSite();
+        if (!$staticSite->dataValue('package_as_archivematica_sip')) {
             return;
         }
-        // Check that at least one completed static site export has its ZIP on disk
-        $sitesDir = rtrim((string) $services->get('Omeka\Settings')->get('static_site_export_sites_directory_path', ''), '/');
-        $completedSites = $services->get('Omeka\Connection')->fetchAllAssociative(
-            'SELECT ss.name FROM static_site ss INNER JOIN job j ON ss.job_id = j.id WHERE j.status = ?',
-            ['completed']
-        );
-        $hasZip = false;
-        foreach ($completedSites as $site) {
-            if (is_file(sprintf('%s/%s.zip', $sitesDir, $site['name']))) {
-                $hasZip = true;
-                break;
+
+        // Capture everything we need now, before the entity manager state changes
+        $services = $this->getServiceLocator();
+        $sitesDir = rtrim((string) $services->get('Omeka\Settings')
+            ->get('static_site_export_sites_directory_path', ''), '/');
+        $name = $staticSite->name();
+        $site = $staticSite->site();
+        $siteTitle = $site->title();
+        $siteSummary = $site->summary() ?? '';
+        $baseUrl = $staticSite->dataValue('base_url') ?? '';
+
+        // Packaging is deferred to a shutdown function because this event fires
+        // before createSiteArchive() runs (ZIP doesn't exist yet).
+        // The shutdown function fires after perform-job.php exits when ZIP is sure to be created.
+        register_shutdown_function(
+            static function () use ($sitesDir, $name, $siteTitle, $siteSummary, $baseUrl): void {
+                $zipPath = sprintf('%s/%s.zip', $sitesDir, $name);
+                $sipZipPath = sprintf('%s/%s-AM_SIP.zip', $sitesDir, $name);
+
+                if (!is_file($zipPath)) {
+                    return;
+                }
+
+                $csvHandle = fopen('php://temp', 'r+');
+                fputcsv($csvHandle, ['filename', 'dc.title', 'dc.description', 'dc.identifier'], ',', '"', '');
+                fputcsv($csvHandle, [
+                    sprintf('objects/%s.zip', $name),
+                    $siteTitle,
+                    $siteSummary,
+                    $baseUrl,
+                ], ',', '"', '');
+                rewind($csvHandle);
+                $csvContent = stream_get_contents($csvHandle);
+                fclose($csvHandle);
+
+                $zip = new \ZipArchive;
+                if ($zip->open($sipZipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                    return;
+                }
+                $zip->addFile($zipPath, sprintf('objects/%s.zip', $name));
+                $zip->addFromString('metadata/metadata.csv', $csvContent);
+                $zip->close();
             }
-        }
-        if (!$hasZip) {
-            return;
-        }
-        $services->get('Exports\ExporterManager')->configure([
-            'factories' => [
-                'archivematica_static_site' => Service\Exporter\ArchivematicaStaticSiteFactory::class,
-            ],
-        ]);
+        );
+    }
+
+    protected function staticSiteExportIsActive(): bool
+    {
+        $moduleManager = $this->getServiceLocator()->get('Omeka\ModuleManager');
+        $module = $moduleManager->getModule('StaticSiteExport');
+        return $module && $module->getState() === \Omeka\Module\Manager::STATE_ACTIVE;
     }
 }
