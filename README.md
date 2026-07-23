@@ -1,6 +1,8 @@
 # ArchivematicaConnector
 
-Publish [Archivematica](https://www.archivematica.org/) DIPs (Dissemination Information Packages) in Omeka S & export Omeka resources as SIPs (Submission Information Packages) for Archivematica ingest (requires [Exports](https://omeka.org/s/modules/Exports/) module).
+- Publish [Archivematica](https://www.archivematica.org/) DIPs (Dissemination Information Packages) as resource/s in Omeka S
+- Export SIPs (Submission Information Packages) containing Omeka S resources for Archivematica ingest (requires [Exports](https://omeka.org/s/modules/Exports/) module).
+- Export SIPs containing full Omeka S static sites for Archivematica ingest (requires [Static Site Export](https://omeka.org/s/docs/user-manual/modules/staticsiteexport/) module)
 
 See the Omeka S user manual for user documentation.
 
