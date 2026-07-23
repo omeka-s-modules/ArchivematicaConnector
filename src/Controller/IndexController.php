@@ -86,7 +86,10 @@ class IndexController extends AbstractActionController
     {
         $response = $this->api()->search('archivematica_imports', ['job_id' => $jobId]);
         $archivematicaImport = $response->getContent()[0];
-        $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Undo', ['jobId' => $jobId]);
+        // Get original import job args
+        $deleteData = $archivematicaImport->job()->args();
+        $deleteData['previous_job'] = $jobId;
+        $job = $this->jobDispatcher()->dispatch('ArchivematicaConnector\Job\Undo', $deleteData);
         $this->api()->update('archivematica_imports', $archivematicaImport->id(), [
             'o:undo_job' => ['o:id' => $job->getId()],
         ]);
