@@ -28,7 +28,12 @@ class IndexController extends AbstractActionController
                 }
 
                 $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-                $destPath = sys_get_temp_dir() . '/omeka_archivematica_' . uniqid() . ($ext ? '.' . $ext : '.tar');
+                if (strtolower($ext) !== 'tar') {
+                    $this->messenger()->addError('The selected file is not a TAR file. Please select a DIP TAR file exported from Archivematica.'); // @translate
+                    return $view;
+                }
+
+                $destPath = sys_get_temp_dir() . '/omeka_archivematica_' . uniqid() . '.' . $ext;
                 if (!move_uploaded_file($file['tmp_name'], $destPath)) {
                     $this->messenger()->addError('Could not save the uploaded file.'); // @translate
                     return $view;

@@ -39,6 +39,7 @@ class ImportForm extends Form
             'attributes' => [
                 'id' => 'dip-file',
                 'required' => true,
+                'accept' => '.tar',
             ],
         ]);
 
