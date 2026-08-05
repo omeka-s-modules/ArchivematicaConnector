@@ -67,10 +67,10 @@ class ArchivematicaImport extends \ArchivematicaConnector\Entity\ArchivematicaIm
     public function __sleep()
     {
         if ($this->__isInitialized__) {
-            return ['__isInitialized__', 'id', 'job', 'addedCount', 'updatedCount', 'undoJob', 'rerunJob', 'comment'];
+            return ['__isInitialized__', 'id', 'job', 'addedCount', 'updatedCount', 'undoJob', 'comment'];
         }
 
-        return ['__isInitialized__', 'id', 'job', 'addedCount', 'updatedCount', 'undoJob', 'rerunJob', 'comment'];
+        return ['__isInitialized__', 'id', 'job', 'addedCount', 'updatedCount', 'undoJob', 'comment'];
     }
 
     /**
@@ -234,28 +234,6 @@ class ArchivematicaImport extends \ArchivematicaConnector\Entity\ArchivematicaIm
         $this->__initializer__ && $this->__initializer__->__invoke($this, 'getUndoJob', []);
 
         return parent::getUndoJob();
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function setRerunJob(\Omeka\Entity\Job $job)
-    {
-
-        $this->__initializer__ && $this->__initializer__->__invoke($this, 'setRerunJob', [$job]);
-
-        return parent::setRerunJob($job);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getRerunJob()
-    {
-
-        $this->__initializer__ && $this->__initializer__->__invoke($this, 'getRerunJob', []);
-
-        return parent::getRerunJob();
     }
 
     /**

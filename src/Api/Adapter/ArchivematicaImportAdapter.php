@@ -38,11 +38,6 @@ class ArchivematicaImportAdapter extends AbstractEntityAdapter
             $entity->setUndoJob($job);
         }
 
-        if (isset($data['o:rerun_job']['o:id'])) {
-            $job = $this->getAdapter('jobs')->findEntity($data['o:rerun_job']['o:id']);
-            $entity->setRerunJob($job);
-        }
-
         if (isset($data['added_count'])) {
             $entity->setAddedCount($data['added_count']);
         }

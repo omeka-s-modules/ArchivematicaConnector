@@ -60,15 +60,27 @@ class IndexController extends AbstractActionController
         $view = new ViewModel;
         if ($this->getRequest()->isPost()) {
             $data = $this->params()->fromPost();
-            if (isset($data['undoJobs'])) {
+            if (isset($data['jobActions'])) {
                 $undoJobIds = [];
-                foreach ($data['undoJobs'] as $jobId) {
-                    $this->undoJob($jobId);
-                    $undoJobIds[] = $jobId;
+                $currentUndoJobLinks = [];
+                foreach ($data['jobActions'] as $jobId => $action) {
+                    if ($action == 'undo') {
+                        $undoJobIds[] = $jobId;
+                        $job = $this->undoJob($jobId);
+                        $currentUndoJobLinks[] = sprintf('<a target="_blank" href="%s">%s</a>', $this->url()->fromRoute('admin/id', ['controller' => 'job', 'id' => $job->getId()]), $this->translate('Job #') . $job->getId());
+                    }
                 }
-                $message = new Message('Undo in progress on the following jobs: %s', // @translate
-                    implode(', ', $undoJobIds));
-                $this->messenger()->addSuccess($message);
+                if (!empty($undoJobIds)) {
+                    $message = new Message(
+                        '%s %s %s %s',
+                        $this->translate('Undo in progress in: '),
+                        implode(', ', $currentUndoJobLinks),
+                        $this->translate(' for the following jobs: '),
+                        implode(', ', $undoJobIds),
+                    );
+                    $message->setEscapeHtml(false);
+                    $this->messenger()->addSuccess($message);
+                }
             } else {
                 $this->messenger()->addError('Error: no jobs selected'); // @translate
             }
@@ -83,6 +95,7 @@ class IndexController extends AbstractActionController
         ];
         $response = $this->api()->search('archivematica_imports', $query);
         $this->paginator($response->getTotalResults(), $page);
+        $this->browse()->setDefaults('archivematica_past_imports');
         $view->setVariable('imports', $response->getContent());
         return $view;
     }

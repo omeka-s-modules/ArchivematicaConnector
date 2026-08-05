@@ -102,4 +102,20 @@ return [
             ],
         ],
     ],
+    'browse_defaults' => [
+        'admin' => [
+            'archivematica_past_imports' => [
+                'sort_by' => 'id',
+                'sort_order' => 'desc',
+            ],
+        ],
+    ],
+    'sort_defaults' => [
+        'admin' => [
+            'archivematica_past_imports' => [
+                'id' => 'Job ID', // @translate
+                'date' => 'Date', // @translate
+            ],
+        ],
+    ],
 ];

@@ -1,70 +1,95 @@
 <?php
+$this->headLink()->appendStylesheet($this->assetUrl('css/archivematica-connector.css', 'ArchivematicaConnector'));
+$this->htmlElement('body')->appendAttribute('class', 'archivematica jobs undo browse');
 $escape = $this->plugin('escapeHtml');
 ?>
 
 <?php echo $this->pageTitle($this->translate('Archivematica Connector'), 1, $this->translate('Past Imports')); ?>
+
 <?php if (empty($imports)): ?>
 <div class="no-resources">
     <p><?php echo $this->translate('There are no past imports.'); ?></p>
 </div>
 <?php else: ?>
-<?php echo $this->pagination(); ?>
 
+<div class="browse-controls">
+    <?php echo $this->pagination(); ?>
+    <?php echo $this->browse()->renderSortSelector('archivematica_past_imports'); ?>
+</div>
 <form method='POST'>
     <fieldset id='page-actions'>
-        <input type='submit' value="<?php echo $this->translate('Submit'); ?>" />
+        <input type='submit' value='Submit' />
     </fieldset>
-    <table class="tablesaw" data-tablesaw-mode="stack">
+
+    <table class="tablesaw" data-tablesaw-mode="stack" aria-label="<?php echo $this->translate('Past Imports'); ?>">
         <thead>
             <tr>
-                <th><?php echo $escape($this->translate('Undo')); ?></th>
-                <th><?php echo $escape($this->translate('Job ID')); ?></th>
-                <th><?php echo $escape($this->translate('File')); ?></th>
-                <th><?php echo $escape($this->translate('Comment')); ?></th>
-                <th><?php echo $escape($this->translate('Items')); ?></th>
-                <th><?php echo $escape($this->translate('Date')); ?></th>
-                <th><?php echo $escape($this->translate('Status')); ?></th>
-                <th><?php echo $escape($this->translate('Owner')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Job ID')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Actions')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('File')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Comment')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Resources')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Date')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Status')); ?></th>
+                <th scope="col"><?php echo $escape($this->translate('Owner')); ?></th>
             </tr>
         </thead>
         <tbody>
         <?php foreach ($imports as $import): ?>
-        <?php $job = $import->job(); $undoJob = $import->undoJob(); ?>
+        <?php $job = $import->job(); ?>
+        <?php $undoJob = $import->undoJob(); ?>
+        <?php $disableOption = ($job->jobClass() == 'ArchivematicaConnector\Job\Undo') ? 'disabled' : ''; ?>
         <tr>
+            <th scope="row"><?php echo $job->link($job->id()); ?></th>
             <td>
-                <?php if (!$undoJob): ?>
-                <input type='checkbox' name='undoJobs[]' value='<?php echo $job->id(); ?>' aria-label="<?php echo $this->translate('Undo job'); ?>" />
-                <?php endif; ?>
+            <div class="archivematica-connector-inputs" role="radiogroup" aria-label="<?php echo $this->translate('Action options'); ?>">
+                <label>
+                    <input type='radio' name='jobActions[<?php echo $job->id(); ?>]' value checked aria-label="<?php echo $this->translate('[No Action]'); ?>" />
+                    <?php echo $this->translate('[No Action]'); ?>
+                </label>
+                <label>
+                    <input type='radio' name='jobActions[<?php echo $job->id(); ?>]' value='undo' aria-label="<?php echo $this->translate('Undo'); ?>" <?php echo $disableOption; ?> />
+                    <?php echo $this->translate('Undo'); ?>
+                </label>
+            </div>
             </td>
-            <td><?php echo $job->link($job->id()); ?></td>
             <td>
                 <?php
                 $args = $job->args();
                 echo $escape($args['original_filename'] ?? '—');
                 ?>
             </td>
-            <td><?php echo $escape($import->comment()); ?></td>
-            <td>
+            <td class="archivematica-comment">
+                <?php echo $escape($import->comment()); ?>
+            </td>
+            <td class="archivematica-resources">
                 <?php
-                $liveCount = $this->api()->search('items', ['archivematica_import_id' => $job->id()])->getTotalResults();
-                if ($liveCount > 0) {
-                    echo $this->hyperlink('Total: ' . $liveCount, $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $job->id()]]), ['target' => '_blank']) . '<br>';
+                $jobID = $job->id();
+                $totalCount = $import->addedCount() + $import->updatedCount();
+                $totalResults = $this->api()->search('items', ['archivematica_import_id' => $jobID]);
+                if ($totalResults->getTotalResults() > 0) {
+                    echo $this->hyperlink('Total Resources: ' . $totalResults->getTotalResults(), $this->url('admin/default', ['controller' => 'item', 'action' => 'browse'], ['query' => ['archivematica_import_id' => $jobID]]), ['target' => '_blank']) . '<br>';
                 } else {
-                    echo 'Total: ' . ($import->addedCount() + $import->updatedCount()) . '<br>';
+                    echo 'Total Resources: ' . $totalCount . '<br>';
                 }
-                echo 'Added: ' . $import->addedCount() . '<br>';
-                echo 'Updated: ' . $import->updatedCount();
+                if ($import->addedCount() > 0) {
+                    echo 'Added: ' . $import->addedCount() . '<br>';
+                }
+                if ($import->updatedCount() > 0) {
+                    echo 'Updated: ' . $import->updatedCount() . '<br>';
+                }
                 ?>
             </td>
             <td><?php echo $escape($this->i18n()->dateFormat($job->started())); ?></td>
             <td>
             <?php
             if ($undoJob) {
-                echo $this->translate('Undone in job ') . $undoJob->id() . ': ' . $escape($this->i18n()->dateFormat($undoJob->ended()));
+                $status = $this->translate('Undone in job ') . $undoJob->id() . ': ' . $escape($this->i18n()->dateFormat($undoJob->ended()));
             } else {
-                echo $this->translate($job->status());
+                $status = $this->translate($job->status());
             }
             ?>
+            <?php echo $status; ?>
             </td>
             <td><?php echo $this->hyperlink($job->owner()->name(), $this->url('admin/id', ['controller' => 'user', 'action' => 'show', 'id' => $job->owner()->id()])); ?></td>
         </tr>

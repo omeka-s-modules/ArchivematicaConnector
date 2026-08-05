@@ -1,0 +1,60 @@
+.archivematica-connector-inputs {
+    display: flex;
+    flex-direction: column;
+}
+
+.archivematica tbody th {
+    border-bottom: 1px solid #dfdfdf;
+}
+
+.archivematica td.archivematica-comment .tablesaw-cell-content {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+}
+
+.archivematica td.archivematica-resources .tablesaw-cell-content {
+    display: inline;
+}
+
+.archivematica .tablesaw td:first-of-type {
+    background: transparent !important;
+}
+
+@media screen and (max-width: 640px) {
+    .archivematica .tablesaw {
+        border: 0;
+    }
+
+    .archivematica .tablesaw tbody th,
+    .archivematica .tablesaw tbody td {
+        display: flex;
+    }
+
+    .archivematica .tablesaw tbody tr {
+        border: 1px solid #dfdfdf;
+        border-radius: 3px;
+        margin-bottom: 1rem;
+    }
+
+    .archivematica .tablesaw tbody th {
+        background-color: rgba(0,0,0,.04);
+        border-top: 0;
+    }
+
+    .archivematica .tablesaw tbody tr td:last-child {
+        border-bottom: 0;
+    }
+
+    .tablesaw td:first-of-type .tablesaw-cell-label {
+        width: 30%;
+        height: auto;
+        padding: 0 .6em 0 0;
+    }
+
+    .tablesaw td:first-of-type .tablesaw-cell-content {
+        width: 70%;
+    }
+}
