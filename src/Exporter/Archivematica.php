@@ -11,6 +11,15 @@ use Omeka\Form\Element as OmekaElement;
 
 class Archivematica implements ExporterInterface
 {
+    /**
+     * Maximum length, in bytes, of a single metadata.csv field value.
+     *
+     * Archivematica parses metadata.csv with Python's csv module, which has a
+     * hard-coded 131072-byte field size limit. Exceeding it aborts METS
+     * generation for the whole SIP, so values are truncated well below that.
+     */
+    const MAX_FIELD_LENGTH = 100000;
+
     protected $apiManager;
 
     public function __construct(ApiManager $apiManager)
@@ -130,6 +139,7 @@ class Archivematica implements ExporterInterface
                     }
                 }
 
+                $itemHasRow = false;
                 foreach ($item->media() as $media) {
                     $filename = $this->mediaFilename($item->id(), $media);
                     if (!$filename) {
@@ -138,6 +148,17 @@ class Archivematica implements ExporterInterface
                     if ($includeFiles) {
                         $this->copyMediaFile($media, $job->getExportDirectoryPath() . '/objects/' . $filename);
                     }
+                    fputcsv($fp, array_merge(['objects/' . $filename], array_values($metaRow)), ',', '"', '');
+                    $itemHasRow = true;
+                }
+
+                // Items with no media (or none with an exportable file) still
+                // have metadata worth keeping. Give them a small JSON snapshot
+                // of the item to carry that metadata, since Archivematica
+                // discards empty directories before generating the SIP's METS
+                // and so cannot attach metadata to a row with no real object.
+                if (!$itemHasRow) {
+                    $filename = $this->writeItemMetadataFile($job->getExportDirectoryPath(), $item->id(), $itemJson);
                     fputcsv($fp, array_merge(['objects/' . $filename], array_values($metaRow)), ',', '"', '');
                 }
             }
@@ -177,7 +198,11 @@ class Archivematica implements ExporterInterface
         if (empty($values)) {
             return null;
         }
-        return [[$column, implode('|', $values)]];
+        $value = implode('|', $values);
+        if (strlen($value) > self::MAX_FIELD_LENGTH) {
+            $value = substr($value, 0, self::MAX_FIELD_LENGTH) . '... [truncated]';
+        }
+        return [[$column, $value]];
     }
 
     protected function isPropertyValues($v): bool
@@ -201,6 +226,13 @@ class Archivematica implements ExporterInterface
         $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $source);
         // Prefix with item ID to ensure uniqueness across items.
         return sprintf('%d_%s', $itemId, $safeName . ($extension && !str_ends_with($safeName, '.' . $extension) ? '.' . $extension : ''));
+    }
+
+    protected function writeItemMetadataFile(string $exportDirectoryPath, int $itemId, array $itemJson): string
+    {
+        $filename = sprintf('%d_metadata.json', $itemId);
+        file_put_contents($exportDirectoryPath . '/objects/' . $filename, json_encode($itemJson, JSON_PRETTY_PRINT));
+        return $filename;
     }
 
     protected function copyMediaFile($media, string $destPath): void
