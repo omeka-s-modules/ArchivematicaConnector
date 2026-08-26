@@ -140,23 +140,24 @@ class Archivematica implements ExporterInterface
                 }
 
                 $itemHasRow = false;
-                foreach ($item->media() as $media) {
-                    $filename = $this->mediaFilename($item->id(), $media);
-                    if (!$filename) {
-                        continue;
-                    }
-                    if ($includeFiles) {
+                if ($includeFiles) {
+                    foreach ($item->media() as $media) {
+                        $filename = $this->mediaFilename($item->id(), $media);
+                        if (!$filename) {
+                            continue;
+                        }
                         $this->copyMediaFile($media, $job->getExportDirectoryPath() . '/objects/' . $filename);
+                        fputcsv($fp, array_merge(['objects/' . $filename], array_values($metaRow)), ',', '"', '');
+                        $itemHasRow = true;
                     }
-                    fputcsv($fp, array_merge(['objects/' . $filename], array_values($metaRow)), ',', '"', '');
-                    $itemHasRow = true;
                 }
 
-                // Items with no media (or none with an exportable file) still
-                // have metadata worth keeping. Give them a small JSON snapshot
-                // of the item to carry that metadata, since Archivematica
-                // discards empty directories before generating the SIP's METS
-                // and so cannot attach metadata to a row with no real object.
+                // Any item left without a real object in objects/ (no media,
+                // none exportable, or files weren't included) still has
+                // metadata worth keeping. Give it a small JSON snapshot to
+                // carry that metadata, since Archivematica discards empty
+                // directories before generating the SIP's METS and so cannot
+                // attach metadata to a row with no real object.
                 if (!$itemHasRow) {
                     $filename = $this->writeItemMetadataFile($job->getExportDirectoryPath(), $item->id(), $itemJson);
                     fputcsv($fp, array_merge(['objects/' . $filename], array_values($metaRow)), ',', '"', '');
