@@ -202,7 +202,18 @@ class Archivematica implements ExporterInterface
         if (strlen($value) > self::MAX_FIELD_LENGTH) {
             $value = substr($value, 0, self::MAX_FIELD_LENGTH) . '... [truncated]';
         }
-        return [[$column, $value]];
+        return [[$column, $this->stripInvalidXmlChars($value)]];
+    }
+
+    /**
+     * Remove characters that lxml (used by Archivematica's METS generation)
+     * refuses to serialize as XML text, such as the form feed page breaks
+     * OCR/PDF text extraction leaves behind. Left in place, one aborts METS
+     * generation for the whole SIP with "All strings must be XML compatible".
+     */
+    protected function stripInvalidXmlChars(string $value): string
+    {
+        return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
     }
 
     protected function isPropertyValues($v): bool
